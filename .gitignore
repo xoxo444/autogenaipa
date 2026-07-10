@@ -1,0 +1,13 @@
+﻿venv/
+.env
+__pycache__/
+*.pyc
+
+gmail_token.json
+calendar_token.json
+weather_token.json
+token.json
+credentials.json
+
+.gemini/
+GEMINI.md
