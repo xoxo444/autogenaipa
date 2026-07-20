@@ -1,6 +1,5 @@
 from core.session import SessionState
 
-
 class ConversationManager:
 
     FOLLOW_UP_PHRASES = {
@@ -26,7 +25,17 @@ class ConversationManager:
         "there",
         "again",
         "same",
-    }
+        "attach it",
+        "attach that",
+        "summarize it",
+        "summarize that",
+        "compare them",
+        "open it",
+        "open that",
+        "email it",
+        "email that",
+        "use that",
+        }
 
     WEATHER_WORDS = {
         "weather",
@@ -66,15 +75,32 @@ class ConversationManager:
         "scheduled",
     }
 
+    FILESYSTEM_WORDS = {
+    "file",
+    "files",
+    "folder",
+    "directory",
+    "document",
+    "documents",
+    "read",
+    "summarize",
+    "summary",
+    "compare",
+    "local",
+    "filesystem",
+    "pdf",
+    "txt",
+    "docx",
+    "python",
+    "project",
+}
+
 
     def __init__(self):
 
         self.session = SessionState()
 
-        # Store the current conversation topic
-        # without requiring changes to SessionState yet.
         self.current_topic = None
-
 
     def update_user_message(
         self,
@@ -107,6 +133,8 @@ class ConversationManager:
     def _detect_topic(
         self,
         message: str,
+
+        
     ):
 
         text = message.lower()
@@ -139,6 +167,13 @@ class ConversationManager:
             self.current_topic = "calendar"
 
             return
+        
+        if words.intersection(
+            self.FILESYSTEM_WORDS
+            ):
+            self.current_topic = "filesystem"
+            
+            return
 
 
     def is_follow_up(
@@ -149,7 +184,7 @@ class ConversationManager:
         text = message.lower().strip()
 
 
-        # Explicit follow-up phrases
+        #follow-up phrases
         for phrase in self.FOLLOW_UP_PHRASES:
 
             if phrase in text:
@@ -157,14 +192,17 @@ class ConversationManager:
                 return True
 
 
-        # Pronoun references
         reference_words = {
-            "it",
-            "that",
-            "them",
-            "those",
-            "there",
-        }
+             "it",
+             "that",
+             "them",
+             "those",
+             "there",
+             "this",
+             "these",
+             "one",
+             "ones",
+             }
 
         words = set(text.split())
 
@@ -174,9 +212,6 @@ class ConversationManager:
 
             return True
 
-
-        # Date continuation while already
-        # discussing a topic.
         month_names = {
             "january",
             "february",

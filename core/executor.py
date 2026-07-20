@@ -1,5 +1,5 @@
+#done
 import asyncio
-
 from core.state import SharedState
 from core.task import Task, TaskStatus
 from core.capability_registry import CapabilityRegistry
@@ -22,7 +22,7 @@ class DAGExecutor:
 
         print("\n[EXECUTOR] Starting workflow execution...\n")
 
-        while not state.workflow_finished():
+        while not state.workflow_finished():   #keep working unless finished
 
             ready_tasks = state.get_ready_tasks()
 
@@ -142,6 +142,7 @@ Return concise but complete information.
                     task.id,
                     final_result,
                 )
+                print("FINAL RESULT :", final_result)
 
                 state.add_evidence(
                     source=task.assigned_agent,
@@ -156,6 +157,12 @@ Return concise but complete information.
                 return
 
             except Exception as error:
+                
+                import traceback
+
+                print("\nERROR:")
+                print(type(error))
+                print(error)
 
                 retries += 1
 

@@ -1,11 +1,13 @@
+import mimetypes
+import os
 import asyncio
 import base64
 from email.mime.text import MIMEText
-
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from googleapiclient.discovery import build
-
 from auth.google_auth import get_google_credentials
-
 
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -351,85 +353,95 @@ async def create_email_draft(
     to: str,
     subject: str,
     body: str,
+    attachments: list[str] | None = None,
 ) -> dict:
     """
     Create a Gmail draft.
 
-    This does not send the email.
+    If attachments are supplied,
+    attach them automatically.
     """
 
     print("[TOOL] create_email_draft called")
 
     try:
+
         service = get_gmail_service()
 
-        message = MIMEText(body)
+        print("Attachments:", attachments)
 
-        message["to"] = to
-        message["subject"] = subject
+        if attachments:
+
+            message = MIMEMultipart()
+
+            message["to"] = to
+            message["subject"] = subject
+
+            message.attach(
+                MIMEText(body, "plain")
+            )
+
+            for attachment_path in attachments:
+
+                print("Attaching:", attachment_path)
+
+                content_type, encoding = mimetypes.guess_type(
+                    attachment_path
+                )
+
+                if content_type is None:
+                    content_type = "application/octet-stream"
+
+                main_type, sub_type = content_type.split("/", 1)
+
+                with open(
+                    attachment_path,
+                    "rb",
+                ) as file:
+
+                    attachment = MIMEBase(
+                        main_type,
+                        sub_type,
+                    )
+
+                    attachment.set_payload(
+                        file.read()
+                    )
+
+                encoders.encode_base64(
+                    attachment
+                )
+
+                attachment.add_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{os.path.basename(attachment_path)}"',
+                )
+
+                message.attach(
+                    attachment
+                )
+
+        #email without attachments
+        else:
+
+            message = MIMEText(body)
+
+            message["to"] = to
+            message["subject"] = subject
 
         raw_message = base64.urlsafe_b64encode(
             message.as_bytes()
         ).decode()
-
-        draft_body = {
-            "message": {
-                "raw": raw_message
-            }
-        }
 
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
             .create(
                 userId="me",
-                body=draft_body,
-            )
-            .execute()
-        )
-
-        return {
-            "success": True,
-            "action": "draft_created",
-
-            "draft_id": draft.get("id"),
-
-            "recipient": to,
-            "subject": subject,
-            "body": body,
-
-            "message": (
-                f"Draft created successfully for {to}."
-            ),
-        }
-
-    except Exception as error:
-
-        return {
-            "success": False,
-            "error": str(error),
-        }
-
-async def send_draft(
-    draft_id: str,
-) -> dict:
-    """
-    Send an existing Gmail draft.
-    """
-
-    print("[TOOL] send_draft called")
-
-    try:
-
-        service = get_gmail_service()
-
-        sent_message = await asyncio.to_thread(
-            lambda: service.users()
-            .drafts()
-            .send(
-                userId="me",
                 body={
-                    "id": draft_id
+                    "message": {
+                        "raw": raw_message
+                    }
                 },
             )
             .execute()
@@ -437,18 +449,123 @@ async def send_draft(
 
         return {
             "success": True,
-            "action": "draft_sent",
-
-            "draft_id": draft_id,
-
-            "message_id": sent_message.get("id"),
-
-            "thread_id": sent_message.get("threadId"),
-
-            "message": "Draft sent successfully.",
+            "action": "draft_created",
+            "draft_id": draft.get("id"),
+            "recipient": to,
+            "subject": subject,
+            "attachments": attachments if attachments else [],
+            "message": "Draft created successfully.",
         }
 
     except Exception as error:
+
+        import traceback
+
+        traceback.print_exc()
+
+        return {
+            "success": False,
+            "error": str(error),
+        }
+
+async def send_email(
+    to: str,
+    subject: str,
+    body: str,
+    attachments: list[str] | None = None,
+) -> dict:
+    """
+    Create and immediately send an email.
+    """
+
+    print("[TOOL] send_email called")
+
+    try:
+
+        service = get_gmail_service()
+
+        if attachments:
+
+            message = MIMEMultipart()
+
+            message["to"] = to
+            message["subject"] = subject
+
+            message.attach(
+                MIMEText(body, "plain")
+            )
+
+            for attachment_path in attachments:
+
+                content_type, _ = mimetypes.guess_type(
+                    attachment_path
+                )
+
+                if content_type is None:
+                    content_type = "application/octet-stream"
+
+                main_type, sub_type = content_type.split("/", 1)
+
+                with open(attachment_path, "rb") as file:
+
+                    attachment = MIMEBase(
+                        main_type,
+                        sub_type,
+                    )
+
+                    attachment.set_payload(file.read())
+
+                encoders.encode_base64(
+                    attachment
+                )
+
+                attachment.add_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{os.path.basename(attachment_path)}"',
+                )
+
+                message.attach(
+                    attachment
+                )
+
+        else:
+
+            message = MIMEText(body)
+
+            message["to"] = to
+            message["subject"] = subject
+
+        raw_message = base64.urlsafe_b64encode(
+            message.as_bytes()
+        ).decode()
+
+        sent = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .send(
+                userId="me",
+                body={
+                    "raw": raw_message
+                },
+            )
+            .execute()
+        )
+
+        return {
+            "success": True,
+            "action": "email_sent",
+            "message_id": sent.get("id"),
+            "thread_id": sent.get("threadId"),
+            "recipient": to,
+            "subject": subject,
+            "attachments": attachments or [],
+            "message": "Email sent successfully.",
+        }
+
+    except Exception as error:
+
+        import traceback
+        traceback.print_exc()
 
         return {
             "success": False,

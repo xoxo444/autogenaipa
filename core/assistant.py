@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 import re
-
 from autogen_core.models import UserMessage
-
 from core.planner import DynamicPlanner
 from core.executor import DAGExecutor
 from core.conversation_manager import ConversationManager
@@ -18,15 +16,17 @@ class PersonalAssistant:
 
     def __init__(
         self,
-        planner: DynamicPlanner,
-        executor: DAGExecutor,
-        model_client,
+        planner,
+        executor,
+        conversation_manager,
+        memory_manager,
+        model_client
     ):
         self.planner = planner
         self.executor = executor
         self.model_client = model_client
-
-        self.memory = ConversationManager()
+        self.long_term_memory = memory_manager
+        self.conversation = conversation_manager
 
 
     async def chat(
@@ -35,6 +35,15 @@ class PersonalAssistant:
     ) -> str:
 
         original_user_message = user_message
+
+        related_memories = self.long_term_memory.recall(
+            user_message,
+            k=5,
+    )
+        
+        print("\n========== RELATED MEMORIES ==========")
+        print(related_memories)
+        print("======================================\n")
 
         cities = [
             "noida",
@@ -51,21 +60,21 @@ class PersonalAssistant:
 
             if city in user_message.lower():
 
-                self.memory.remember_city(
+                self.conversation.remember_city(
                     city.title()
                 )
 
                 break
 
 
-        if self.memory.is_follow_up(
+        if self.conversation.is_follow_up(
             user_message
         ):
 
-            city = self.memory.get_last_city()
+            city = self.conversation.get_last_city()
 
             current_topic = (
-                self.memory.get_current_topic()
+                self.conversation.get_current_topic()
             )
 
             if city and current_topic == "weather":
@@ -80,7 +89,7 @@ class PersonalAssistant:
 
 
         conversation_context = (
-            self.memory.get_history_text(
+            self.conversation.get_history_text(
                 limit=10
             )
         )
@@ -89,12 +98,69 @@ class PersonalAssistant:
             self._build_session_context()
         )
 
-
         state = await self.planner.create_plan(
             user_goal=user_message,
             conversation_context=conversation_context,
             session_context=session_context,
+            memory_context=related_memories,
         )
+
+        if len(state.tasks) == 0:
+
+            prompt = f"""
+You are a personal AI assistant.
+
+Relevant long-term memories:
+{related_memories}
+
+Conversation:
+{conversation_context}
+
+User:
+{user_message}
+
+If the user is telling you a new fact, acknowledge it naturally.
+
+If the answer exists in long-term memory,
+answer using that memory.
+
+Otherwise answer normally.
+"""
+
+            response = await self.model_client.create(
+                messages=[
+                    UserMessage(
+                        content=prompt,
+                        source="assistant",
+                    )
+                ]
+            )
+
+            answer = str(response.content)
+
+            self.conversation.update_user_message(
+                original_user_message
+            )
+
+            self.conversation.update_assistant_message(
+                answer
+            )
+
+            self.long_term_memory.remember(
+                original_user_message,
+                {"type": "user"},
+            )
+
+            self.long_term_memory.remember(
+                answer,
+                {"type": "assistant"},
+            )
+
+            return answer
+
+        
+
+
 
 
         state = await self.executor.execute(
@@ -127,12 +193,22 @@ class PersonalAssistant:
         )
 
 
-        self.memory.update_user_message(
+        self.conversation.update_user_message(
             original_user_message
         )
 
-        self.memory.update_assistant_message(
+        self.conversation.update_assistant_message(
             answer
+        )
+
+        self.long_term_memory.remember(
+            original_user_message,
+            {"type": "user"},
+        )
+
+        self.long_term_memory.remember(
+            answer,
+            {"type": "assistant"},  
         )
 
 
@@ -143,7 +219,7 @@ class PersonalAssistant:
         self,
     ) -> str:
 
-        session = self.memory.session
+        session = self.conversation.session
 
         context = []
 
@@ -156,7 +232,7 @@ class PersonalAssistant:
 
 
         current_topic = (
-            self.memory.get_current_topic()
+            self.conversation.get_current_topic()
         )
 
         if current_topic:
@@ -228,7 +304,7 @@ class PersonalAssistant:
         user_message: str,
     ):
 
-        session = self.memory.session
+        session = self.conversation.session
 
         session.last_goal = user_message
         session.last_state = state
@@ -276,7 +352,7 @@ class PersonalAssistant:
         user_message: str,
     ):
 
-        session = self.memory.session
+        session = self.conversation.session
 
 
         draft_patterns = [

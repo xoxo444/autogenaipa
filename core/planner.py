@@ -1,3 +1,4 @@
+#done
 import json
 from typing import Any
 
@@ -26,6 +27,7 @@ class DynamicPlanner:
         user_goal: str,
         conversation_context: str = "",
         session_context: str = "",
+        memory_context=""
     ) -> SharedState:
 
         print("[PLANNER] Creating execution plan...")
@@ -54,6 +56,9 @@ CURRENT SESSION MEMORY:
 
 AVAILABLE AGENTS AND CAPABILITIES:
 {capability_context}
+
+LONG TERM MEMORY:
+{memory_context if memory_context else "No relevant memories found."}
 
 
 PLANNING RULES:
@@ -145,6 +150,14 @@ and body 'Can we meet tomorrow at 3 PM?'"
 
 24. Do not include text before or after the JSON.
 
+25. If the user's request can be answered using the LONG TERM MEMORY
+or is simply conversational and does not require any specialist
+agent, return:
+
+{{
+  "goal": "conversation",
+  "tasks": []
+}}
 
 OUTPUT FORMAT:
 
@@ -196,6 +209,8 @@ Task 2:
 Retrieve upcoming calendar events.
 
 Both tasks have empty dependencies.
+
+
 
 
 FOLLOW-UP EXAMPLE:
@@ -358,10 +373,9 @@ Now create the minimal execution plan for the CURRENT USER REQUEST.
             )
 
         if not tasks:
-
-            raise ValueError(
-                "Planner created an empty plan."
-            )
+            plan_data["goal"] = plan_data.get("goal", "")
+            plan_data["tasks"] = []
+            return
 
         task_ids = set()
 

@@ -1,11 +1,8 @@
+#done
 import httpx
 from typing import Dict, Any
 
-
-# In-memory cache for coordinates to avoid redundant geocoding API calls.
-# City coordinates do not change over time, so caching them is highly efficient and safe.
 _coordinates_cache: Dict[str, Dict[str, Any]] = {}
-
 
 async def _get_coordinates(city: str, client: httpx.AsyncClient) -> dict:
     """Helper to fetch coordinates using a shared client and cache results."""

@@ -7,7 +7,7 @@ from tools.gmail_tools import (
     get_unread_emails,
     get_important_emails,
     create_email_draft,
-    send_draft,
+    send_email,
 )
 
 
@@ -25,7 +25,7 @@ def create_gmail_agent(model_client):
             get_unread_emails,
             get_important_emails,
             create_email_draft,
-            send_draft,
+            send_email,
         ],
 
         reflect_on_tool_use=True,
@@ -56,6 +56,31 @@ GENERAL RULES
 
 DRAFT RULES
 
+ATTACHMENT RULES
+
+If Dependency Context contains one or more local
+file paths, use those paths as attachments when
+calling create_email_draft.
+
+Do not ask the user for the path again.
+
+Only ask for clarification if multiple matching
+files are available.
+
+If Dependency Context contains a local file path
+(for example E:\assistant_files\resume.pdf),
+use that exact path as attachment_path when calling
+create_email_draft.
+
+Do not ask the user for the path again.
+
+If multiple files are provided,
+ask which one should be attached.
+
+If no path exists in Dependency Context,
+and the planner has not supplied one,
+create the draft without an attachment.
+
 If the user asks to:
 
 - draft an email
@@ -74,7 +99,7 @@ If the user later says things like:
 
 and a draft already exists in the conversation context,
 
-→ use send_draft.
+→ use send_email.
 
 Do NOT ask again for:
 
@@ -106,6 +131,28 @@ Change the subject.
 ↓
 
 Only ask for the new subject.
+
+User
+
+Email my resume.pdf to abc@gmail.com
+
+↓
+
+Task 1
+
+filesystem_agent
+
+Search for resume.pdf
+
+↓
+
+Task 2
+
+gmail_agent
+
+Create draft using the file path returned by Task 1.
+
+
 
 READING EMAILS
 
